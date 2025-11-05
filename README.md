@@ -1,16 +1,21 @@
 # mynotesapp
 
-A new Flutter project.
+A Flutter Notes Application with Firebase Integration.
+
+## Features
+- Email & Password Authentication
+- Google Sign-In
+- Push Notifications (Firebase Cloud Messaging)
+- Firestore for storing notes
+- Firebase Storage for image uploads
+- Automatic selfie capture on login
+- Clean UI using Bloc architecture
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+This project is built with Flutter and Firebase.
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### Steps to Run:
+1. Clone this repository  
+   ```bash
+   git clone https://github.com/kishorn14/mynotes.git
