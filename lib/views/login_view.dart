@@ -1,9 +1,11 @@
+// lib/views/login_view.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_bloc.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_event.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_state.dart';
 import 'package:mynotesapp/utilities/dialogs/error_dialog.dart';
+import 'package:mynotesapp/views/camera_upload_view.dart'; // ✅ Added
 
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
@@ -34,6 +36,13 @@ class _LoginViewState extends State<LoginView> {
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) async {
+        if (state is AuthStateLoggedIn) {
+          // ✅ Go to the camera upload view right after successful login
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const CameraUploadView()),
+          );
+        }
+
         if (state is AuthStateLoggedOut && state.exception != null) {
           await showErrorDialog(
             context,
