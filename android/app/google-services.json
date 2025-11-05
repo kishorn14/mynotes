@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "604306921005",
+    "firebase_url": "https://kishor-first-app-default-rtdb.firebaseio.com",
+    "project_id": "kishor-first-app",
+    "storage_bucket": "kishor-first-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:604306921005:android:99d1a5c3061c155b024aa4",
+        "android_client_info": {
+          "package_name": "com.example.mynotesapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "604306921005-8p5vm2is9h3p541pmb60t6vpqobi18ei.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.mynotesapp",
+            "certificate_hash": "9f2e9815ce33de372f0b4f6231232b2a989c2bc7"
+          }
+        },
+        {
+          "client_id": "604306921005-34cqnqubg2i427mk54j14k33lgqqtu8p.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDIdnsUJu3XaLSG2SQWEqDuh0NdUR7f6PE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "604306921005-34cqnqubg2i427mk54j14k33lgqqtu8p.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
