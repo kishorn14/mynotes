@@ -8,41 +8,58 @@ class GoogleAuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
 
-  /// Signs in the user with Google
+  /// ✅ Signs in the user with Google and returns a Firebase [UserCredential]
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      // Trigger the Google Sign-In flow
+      // Ensure user signs out any stale session before new sign-in
+      await _googleSignIn.signOut();
+
+      // Start Google Sign-In flow
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
-        print('Google sign-in cancelled by user.');
+        print('⚠️ Google sign-in cancelled by user.');
         return null;
       }
 
-      // Get the Google authentication details
+      // Obtain the auth details from the request
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
-      // Create a credential for Firebase
+      // Build Firebase credential
       final credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      // Sign in with Firebase using the Google credential
+      // Sign in with Firebase
       final userCredential = await _auth.signInWithCredential(credential);
-      print('✅ Google sign-in successful: ${userCredential.user?.email}');
+      final user = userCredential.user;
+
+      if (user != null) {
+        print('✅ Google sign-in successful: ${user.email}');
+      } else {
+        print('⚠️ Google sign-in failed — no user returned.');
+      }
+
       return userCredential;
+    } on FirebaseAuthException catch (e) {
+      print('🔥 FirebaseAuth error during Google sign-in: ${e.code}');
+      return null;
     } catch (e) {
-      print('🔥 Google sign-in error: $e');
+      print('🔥 General Google sign-in error: $e');
       return null;
     }
   }
 
-  /// Signs out from both Google and Firebase
+  /// ✅ Signs out from both Google and Firebase cleanly
   Future<void> signOutFromGoogle() async {
-    await _googleSignIn.signOut();
-    await _auth.signOut();
-    print('👋 User signed out from Google and Firebase.');
+    try {
+      await _googleSignIn.signOut();
+      await _auth.signOut();
+      print('👋 User signed out from Google and Firebase.');
+    } catch (e) {
+      print('⚠️ Error signing out: $e');
+    }
   }
 }

@@ -1,3 +1,6 @@
+// lib/views/notes/notes_view.dart
+// ignore_for_file: use_build_context_synchronously
+
 import 'package:flutter/material.dart';
 import 'package:mynotesapp/constants/routes.dart';
 import 'package:mynotesapp/enums/menu_action.dart';
@@ -8,8 +11,10 @@ import 'package:mynotesapp/services/auth/bloc/auth_event.dart';
 import 'package:mynotesapp/services/cloud/cloud_note.dart';
 import 'package:mynotesapp/services/cloud/firebase_cloud_storage.dart';
 import 'package:mynotesapp/utilities/dialogs/logout_dialog.dart';
+import 'package:mynotesapp/views/login_view.dart';
 import 'package:mynotesapp/views/notes/notes_list_view.dart';
 import 'package:flutter_bloc/flutter_bloc.dart' show ReadContext;
+import 'package:google_sign_in/google_sign_in.dart';
 
 extension Count<T extends Iterable> on Stream<T> {
   Stream<int> get getLength => map((event) => event.length);
@@ -30,6 +35,31 @@ class NotesViewState extends State<NotesView> {
   void initState() {
     _notesService = FirebaseCloudStorage();
     super.initState();
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    final shouldLogout = await showLogOutDialog(context);
+    if (!shouldLogout || !mounted) return;
+
+    try {
+      final googleSignIn = GoogleSignIn();
+      await googleSignIn.signOut();
+      print('✅ Google sign-out successful');
+    } catch (e) {
+      print('⚠️ Google sign-out failed or not needed: $e');
+    }
+
+    // Trigger Firebase + Bloc logout
+    context.read<AuthBloc>().add(const AuthEventLogOut());
+    print('🚪 User logged out successfully.');
+
+    // Navigate explicitly to login screen to refresh UI
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginView()),
+      (_) => false,
+    );
+
+    print('👋 User signed out from Google and Firebase.');
   }
 
   @override
@@ -59,13 +89,7 @@ class NotesViewState extends State<NotesView> {
             onSelected: (value) async {
               switch (value) {
                 case MenuAction.logout:
-                  final shouldLogout = await showLogOutDialog(context);
-                  if (!context.mounted) return;
-                  if (shouldLogout) {
-                    context.read<AuthBloc>().add(
-                          const AuthEventLogOut(),
-                        );
-                  }
+                  await _handleLogout(context);
                   break;
               }
             },
@@ -101,10 +125,10 @@ class NotesViewState extends State<NotesView> {
                   },
                 );
               } else {
-                return const CircularProgressIndicator();
+                return const Center(child: CircularProgressIndicator());
               }
             default:
-              return const CircularProgressIndicator();
+              return const Center(child: CircularProgressIndicator());
           }
         },
       ),

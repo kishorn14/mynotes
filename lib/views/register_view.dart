@@ -1,22 +1,25 @@
+// lib/views/register_view.dart
+// ignore_for_file: use_build_context_synchronously, avoid_print
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:mynotesapp/extensions/buildcontext/loc.dart';
-import 'package:mynotesapp/services/auth/auth_exception.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_bloc.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_event.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_state.dart';
 import 'package:mynotesapp/utilities/dialogs/error_dialog.dart';
+import 'package:mynotesapp/views/verify_email_view.dart';
 
 class RegisterView extends StatefulWidget {
   const RegisterView({super.key});
 
   @override
-  RegisterViewState createState() => RegisterViewState();
+  State<RegisterView> createState() => _RegisterViewState();
 }
 
-class RegisterViewState extends State<RegisterView> {
+class _RegisterViewState extends State<RegisterView> {
   late final TextEditingController _email;
   late final TextEditingController _password;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -32,93 +35,103 @@ class RegisterViewState extends State<RegisterView> {
     super.dispose();
   }
 
+  void _register() {
+    final email = _email.text.trim();
+    final password = _password.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      showErrorDialog(context, 'Please enter both email and password.');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    context.read<AuthBloc>().add(
+          AuthEventRegister(email: email, password: password),
+        );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) async {
-        if (state is AuthStateRegistering) {
-          if (state.exception is WeakPasswordAuthException) {
-            await showErrorDialog(
-              context,
-              context.loc.register_error_weak_password,
-            );
-          } else if (state.exception is EmailAlreadyInUseAuthException) {
-            await showErrorDialog(
-              context,
-              context.loc.register_error_email_already_in_use,
-            );
-          } else if (state.exception is InvalidEmailAuthException) {
-            await showErrorDialog(
-              context,
-              context.loc.register_error_invalid_email,
-            );
-          } else if (state.exception is GenericAuthException) {
-            await showErrorDialog(
-              context,
-              context.loc.register_error_generic,
-            );
+        // 🔥 Handle registration exceptions
+        if (state is AuthStateRegistering && state.exception != null) {
+          setState(() => _isLoading = false);
+          final error = state.exception.toString();
+
+          if (error.contains('email-already-in-use')) {
+            await showErrorDialog(context, 'This email is already registered.');
+          } else if (error.contains('invalid-email')) {
+            await showErrorDialog(context, 'Invalid email format.');
+          } else if (error.contains('weak-password')) {
+            await showErrorDialog(context, 'Password is too weak (min 6 chars).');
+          } else {
+            await showErrorDialog(context, 'Registration failed. Please try again.');
           }
+        }
+
+        // ✅ When registration succeeds → go to verify email view
+        if (state is AuthStateNeedsVerification) {
+          setState(() => _isLoading = false);
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const VerifyEmailView()),
+          );
+        }
+
+        // ✅ In case user is already logged in
+        if (state is AuthStateLoggedIn) {
+          setState(() => _isLoading = false);
         }
       },
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(context.loc.register),
-        ),
+        appBar: AppBar(title: const Text('Create Account')),
         body: Padding(
           padding: const EdgeInsets.all(16.0),
           child: SingleChildScrollView(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(context.loc.register_view_prompt),
+                const SizedBox(height: 40),
                 TextField(
                   controller: _email,
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  autofocus: true,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    hintText: context.loc.email_text_field_placeholder,
-                  ),
-                ),
-                TextField(
-                  controller: _password,
-                  obscureText: true,
-                  enableSuggestions: false,
-                  autocorrect: false,
-                  decoration: InputDecoration(
-                    hintText: context.loc.password_text_field_placeholder,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    border: OutlineInputBorder(),
                   ),
                 ),
                 const SizedBox(height: 20),
-                Center(
-                  child: Column(
-                    children: [
-                      TextButton(
-                        onPressed: () {
-                          final email = _email.text;
-                          final password = _password.text;
-                          context.read<AuthBloc>().add(
-                                AuthEventRegister(
-                                  email: email,
-                                  password: password,
-                                ),
-                              );
-                        },
-                        child: Text(context.loc.register),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          context.read<AuthBloc>().add(
-                                const AuthEventLogOut(),
-                              );
-                        },
-                        child: Text(
-                          context.loc.register_view_already_registered,
-                        ),
-                      ),
-                    ],
+                TextField(
+                  controller: _password,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    border: OutlineInputBorder(),
                   ),
+                ),
+                const SizedBox(height: 30),
+
+                // ✅ Disable button while loading
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _register,
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                  child: _isLoading
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text('Register'),
+                ),
+
+                const SizedBox(height: 20),
+
+                // ✅ Go back to login
+                TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () {
+                          context.read<AuthBloc>().add(const AuthEventLogOut());
+                        },
+                  child: const Text('Already have an account? Login here.'),
                 ),
               ],
             ),

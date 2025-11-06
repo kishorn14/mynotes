@@ -1,3 +1,4 @@
+// lib/services/auth/bloc/auth_event.dart
 import 'package:equatable/equatable.dart';
 
 // Base class for all authentication events
@@ -8,12 +9,12 @@ abstract class AuthEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-// Initialize Firebase / App startup
+// ✅ Initialize Firebase / App startup
 class AuthEventInitialize extends AuthEvent {
   const AuthEventInitialize();
 }
 
-// Login event
+// ✅ Login event
 class AuthEventLogIn extends AuthEvent {
   final String email;
   final String password;
@@ -27,7 +28,7 @@ class AuthEventLogIn extends AuthEvent {
   List<Object?> get props => [email, password];
 }
 
-// Register event
+// ✅ Register event
 class AuthEventRegister extends AuthEvent {
   final String email;
   final String password;
@@ -41,7 +42,12 @@ class AuthEventRegister extends AuthEvent {
   List<Object?> get props => [email, password];
 }
 
-// Forgot password event
+// ✅ Navigate to registration screen
+class AuthEventShouldRegister extends AuthEvent {
+  const AuthEventShouldRegister();
+}
+
+// ✅ Forgot password event
 class AuthEventForgotPassword extends AuthEvent {
   final String email;
 
@@ -51,18 +57,17 @@ class AuthEventForgotPassword extends AuthEvent {
   List<Object?> get props => [email];
 }
 
-// Logout event
+// ✅ Logout event
 class AuthEventLogOut extends AuthEvent {
   const AuthEventLogOut();
 }
 
-// ✅ Google Sign-In event (this was missing)
+// ✅ Google Sign-In event
 class AuthEventGoogleSignIn extends AuthEvent {
   const AuthEventGoogleSignIn();
 }
 
-// Send Email Verification Event
+// ✅ Send Email Verification event
 class AuthEventSendEmailVerification extends AuthEvent {
   const AuthEventSendEmailVerification();
 }
-

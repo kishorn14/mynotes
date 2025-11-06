@@ -1,4 +1,6 @@
 // lib/services/auth/firebase_auth_provider.dart
+// ignore_for_file: avoid_print
+
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
@@ -10,7 +12,7 @@ class FirebaseAuthProvider implements AuthProvider {
 
   @override
   Future<void> initialize() async {
-    // Firebase.initializeApp is already done in main.dart
+    // Firebase.initializeApp() is already handled in main.dart
     await Future.value();
   }
 
@@ -25,11 +27,43 @@ class FirebaseAuthProvider implements AuthProvider {
     required String email,
     required String password,
   }) async {
-    final cred = await _firebaseAuth.createUserWithEmailAndPassword(
-      email: email,
-      password: password,
-    );
-    return AuthUser.fromFirebase(cred.user!);
+    try {
+      final cred = await _firebaseAuth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password.trim(),
+      );
+
+      final user = cred.user;
+      if (user == null) {
+        throw Exception('User creation failed — user is null.');
+      }
+
+      // ✅ Always reload to get updated email verification status
+      await user.reload();
+
+      // ✅ Send verification email right after account creation
+      if (!user.emailVerified) {
+        await user.sendEmailVerification();
+        print('📧 Verification email sent to ${user.email}');
+      }
+
+      return AuthUser.fromFirebase(_firebaseAuth.currentUser!);
+    } on fb.FirebaseAuthException catch (e) {
+      print('🔥 FirebaseAuthException during registration: ${e.code}');
+      switch (e.code) {
+        case 'email-already-in-use':
+          throw Exception('That email address is already in use.');
+        case 'invalid-email':
+          throw Exception('The email address is not valid.');
+        case 'weak-password':
+          throw Exception('The password is too weak.');
+        default:
+          throw Exception(e.message ?? 'Registration failed.');
+      }
+    } catch (e) {
+      print('⚠️ Unexpected registration error: $e');
+      throw Exception('Something went wrong during registration.');
+    }
   }
 
   @override
@@ -38,8 +72,8 @@ class FirebaseAuthProvider implements AuthProvider {
     required String password,
   }) async {
     final cred = await _firebaseAuth.signInWithEmailAndPassword(
-      email: email,
-      password: password,
+      email: email.trim(),
+      password: password.trim(),
     );
     return AuthUser.fromFirebase(cred.user!);
   }
@@ -47,10 +81,13 @@ class FirebaseAuthProvider implements AuthProvider {
   @override
   Future<void> logOut() async {
     await _firebaseAuth.signOut();
-    // Also sign out from Google if user used Google Sign-In
+
+    // ✅ Also sign out from Google if the user used Google Sign-In
     try {
       await GoogleSignIn().signOut();
-    } catch (_) {}
+    } catch (_) {
+      // Silent fail — user might not have used Google Sign-In
+    }
   }
 
   @override
@@ -58,20 +95,22 @@ class FirebaseAuthProvider implements AuthProvider {
     final user = _firebaseAuth.currentUser;
     if (user != null) {
       await user.sendEmailVerification();
+      print('📩 Email verification sent to ${user.email}');
     } else {
-      throw Exception('No user to send verification to.');
+      throw Exception('No user currently signed in to send verification.');
     }
   }
 
   @override
   Future<void> sendPasswordReset({required String toEmail}) async {
     await _firebaseAuth.sendPasswordResetEmail(email: toEmail);
+    print('🔁 Password reset email sent to $toEmail');
   }
 
   @override
   Future<AuthUser?> signInWithGoogle() async {
     try {
-      // ✅ For Web
+      // ✅ Web platform flow
       if (kIsWeb) {
         final googleProvider = fb.GoogleAuthProvider();
         final result = await _firebaseAuth.signInWithPopup(googleProvider);
@@ -80,12 +119,13 @@ class FirebaseAuthProvider implements AuthProvider {
         return AuthUser.fromFirebase(user);
       }
 
-      // ✅ For Android / iOS
+      // ✅ Android / iOS flow
       final GoogleSignIn googleSignIn = GoogleSignIn(
-  serverClientId: '323791308451-jbck1v3kgafklt2mipepvktar03c4si5.apps.googleusercontent.com',
-);
-final googleUser = await googleSignIn.signIn();
+        serverClientId:
+            '323791308451-jbck1v3kgafklt2mipepvktar03c4si5.apps.googleusercontent.com',
+      );
 
+      final googleUser = await googleSignIn.signIn();
       if (googleUser == null) return null;
 
       final googleAuth = await googleUser.authentication;
@@ -100,6 +140,7 @@ final googleUser = await googleSignIn.signIn();
       final user = userCredential.user;
       if (user == null) return null;
 
+      print('✅ Google sign-in success: ${user.email}');
       return AuthUser.fromFirebase(user);
     } catch (e, stack) {
       debugPrint('🚨 Google Sign-In failed: $e');

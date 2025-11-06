@@ -1,11 +1,13 @@
 // lib/main.dart
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, use_build_context_synchronously
 
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:mynotesapp/l10n/app_localizations.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_bloc.dart';
 import 'package:mynotesapp/services/auth/bloc/auth_event.dart';
@@ -17,9 +19,10 @@ import 'package:mynotesapp/views/register_view.dart';
 import 'package:mynotesapp/views/verify_email_view.dart';
 import 'package:mynotesapp/views/forgot_password_view.dart';
 import 'package:mynotesapp/views/notes/create_update_note_view.dart';
+import 'package:mynotesapp/views/camera_upload_view.dart';
 import 'firebase_options.dart';
 import 'firebase_web_helper.dart'
-    if (dart.library.html) 'firebase_web_helper_web.dart'; // ✅ correct conditional import
+    if (dart.library.html) 'firebase_web_helper_web.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,10 +59,38 @@ Future<void> main() async {
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
+  Future<void> _uploadUserLocation(String userId) async {
+    try {
+      LocationPermission permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        print('❌ Location permission denied.');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      await FirebaseFirestore.instance
+          .collection('user_locations')
+          .doc(userId)
+          .set({
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      print('📍 Location uploaded for user: $userId');
+    } catch (e) {
+      print('⚠️ Error uploading location: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: navigatorKey, // ✅ IMPORTANT: add this
+      navigatorKey: navigatorKey,
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       title: 'mynotesapp',
@@ -74,10 +105,25 @@ class MyApp extends StatelessWidget {
         '/forgot-password/': (context) => const ForgotPasswordView(),
       },
       home: BlocConsumer<AuthBloc, AuthState>(
-        listener: (context, state) {},
+        listener: (context, state) async {
+          if (state is AuthStateLoggedIn) {
+            final user = state.user;
+
+            // ✅ Immediately navigate to camera upload view first
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const CameraUploadView()),
+              (route) => false,
+            );
+
+            // ✅ Also start background location upload safely
+            await _uploadUserLocation(user.id);
+          }
+        },
         builder: (context, state) {
           if (state is AuthStateLoggedIn) {
-            return const NotesView();
+            // ⚠️ We never show NotesView directly anymore —
+            // CameraUploadView handles navigation to NotesView after upload
+            return const CameraUploadView();
           } else if (state is AuthStateNeedsVerification) {
             return const VerifyEmailView();
           } else if (state is AuthStateLoggedOut) {

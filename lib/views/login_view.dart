@@ -102,19 +102,17 @@ class _LoginViewState extends State<LoginView> {
                   child: const Text('Forgot password?'),
                 ),
                 const SizedBox(height: 10),
+
+                /// ✅ FIXED — now just navigates to RegisterView
                 TextButton(
                   onPressed: () {
-                    final email = _emailController.text.trim();
-                    final password = _passwordController.text.trim();
                     context.read<AuthBloc>().add(
-                          AuthEventRegister(
-                            email: email,
-                            password: password,
-                          ),
+                          const AuthEventShouldRegister(),
                         );
                   },
                   child: const Text('Create an account'),
                 ),
+
                 const SizedBox(height: 20),
                 const Divider(),
                 const SizedBox(height: 20),
