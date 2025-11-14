@@ -1,11 +1,55 @@
+// lib/services/cloud/firebase_cloud_storage.dart
+// ignore_for_file: avoid_print
+
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:mynotesapp/services/cloud/cloud_note.dart';
 import 'package:mynotesapp/services/cloud/cloud_storage_constants.dart';
 import 'package:mynotesapp/services/cloud/cloud_storage_exceptions.dart';
 
 class FirebaseCloudStorage {
   final notes = FirebaseFirestore.instance.collection('notes');
+  final uploads = FirebaseFirestore.instance.collection('uploads');
+  final storage = FirebaseStorage.instance;
 
+  // ✅ Upload photo + location to Firebase Storage + Firestore
+  Future<void> uploadUserLocationAndImage({
+    required String userId,
+    required File imageFile,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      // Create a clean path in Firebase Storage
+      final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+      final ref = storage.ref().child('user_uploads/$userId/$timestamp.jpg');
+
+      print('📸 Uploading image to Firebase Storage...');
+
+      // Upload the file
+      final uploadTask = await ref.putFile(imageFile);
+      final imageUrl = await uploadTask.ref.getDownloadURL();
+
+      print('✅ Upload complete: $imageUrl');
+
+      // Save metadata to Firestore
+      await uploads.add({
+        'userId': userId,
+        'imageUrl': imageUrl,
+        'latitude': latitude,
+        'longitude': longitude,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      print('📍 Location uploaded for user: $userId');
+    } catch (e) {
+      print('❌ Error uploading image or location: $e');
+      rethrow;
+    }
+  }
+
+  // Notes management (unchanged)
   Future<void> deleteNote({required String documentId}) async {
     try {
       await notes.doc(documentId).delete();

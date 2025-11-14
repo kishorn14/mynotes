@@ -1,15 +1,13 @@
-// lib/views/camera_upload_view.dart
-// ignore_for_file: avoid_print, use_build_context_synchronously
-
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:mynotesapp/services/auth/auth_service.dart';
 import 'package:mynotesapp/views/notes/notes_view.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class CameraUploadView extends StatefulWidget {
   const CameraUploadView({super.key});
@@ -18,126 +16,154 @@ class CameraUploadView extends StatefulWidget {
   State<CameraUploadView> createState() => _CameraUploadViewState();
 }
 
-class _CameraUploadViewState extends State<CameraUploadView> {
+class _CameraUploadViewState extends State<CameraUploadView>
+    with WidgetsBindingObserver {
   CameraController? _controller;
-  String? _status;
-
-  String get userId => AuthService.firebase().currentUser?.id ?? 'unknown';
+  List<CameraDescription>? _cameras;
+  bool _isCameraInitialized = false;
+  bool _isRearCamera = true;
+  bool _isUploading = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _checkPermissions());
+    WidgetsBinding.instance.addObserver(this);
+    _checkPermissions();
   }
 
-  // ✅ Step 1: Request both permissions together
-  Future<void> _checkPermissions() async {
-    try {
-      setState(() => _status = '🔐 Checking permissions...');
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _controller?.dispose();
+    super.dispose();
+  }
 
-      // Request both permissions together (avoids race condition)
-      final statuses = await [Permission.camera, Permission.location].request();
-
-      final cameraGranted = statuses[Permission.camera]?.isGranted ?? false;
-      final locationGranted = statuses[Permission.location]?.isGranted ?? false;
-
-      if (!cameraGranted && !locationGranted) {
-        _showSettingsDialog('Camera and Location permissions are required.');
-        return;
-      } else if (!cameraGranted) {
-        _showSettingsDialog('Camera permission is required to take your photo.');
-        return;
-      } else if (!locationGranted) {
-        _showSettingsDialog('Location permission is required to log your position.');
-        return;
-      }
-
-      // ✅ Proceed only when both permissions are granted
-      await _initializeCamera();
-    } catch (e) {
-      print('❌ Permission request error: $e');
-      _showSettingsDialog('Permission request failed. Please restart the app.');
+  // Handle returning from app settings
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
     }
   }
 
-  // ✅ Step 2: Show settings dialog for denied permissions
-  void _showSettingsDialog(String message) {
+  /// ✅ FIXED PERMISSION HANDLER
+  Future<void> _checkPermissions() async {
+    try {
+      // 1️⃣ Request CAMERA permission first
+      var cameraStatus = await Permission.camera.status;
+      if (!cameraStatus.isGranted) {
+        cameraStatus = await Permission.camera.request();
+      }
+
+      if (!cameraStatus.isGranted) {
+        if (cameraStatus.isPermanentlyDenied) {
+          _showPermissionDialog();
+        }
+        return;
+      }
+      debugPrint("✅ Camera permission granted");
+
+      // 2️⃣ Then request LOCATION permission
+      var locationStatus = await Permission.location.status;
+      if (!locationStatus.isGranted) {
+        locationStatus = await Permission.location.request();
+      }
+
+      if (!locationStatus.isGranted) {
+        if (locationStatus.isPermanentlyDenied) {
+          _showPermissionDialog();
+        }
+        return;
+      }
+      debugPrint("✅ Location permission granted");
+
+      // 3️⃣ Initialize camera only once both are granted
+      await _initializeCamera();
+    } catch (e) {
+      debugPrint("❌ Permission error: $e");
+    }
+  }
+
+  void _showPermissionDialog() {
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (_) => AlertDialog(
-        title: const Text('Permission Required'),
-        content: Text('$message\n\nPlease enable them in Settings and reopen the app.'),
+        title: const Text('Permissions Required'),
+        content: const Text(
+          'Please enable camera and location permissions in settings to continue.',
+        ),
         actions: [
           TextButton(
-            onPressed: () => openAppSettings(),
+            onPressed: () async {
+              await openAppSettings();
+              if (mounted) Navigator.of(context).pop();
+            },
             child: const Text('Open Settings'),
-          ),
-          TextButton(
-            onPressed: () => exit(0),
-            child: const Text('Exit App'),
           ),
         ],
       ),
     );
   }
 
-  // ✅ Step 3: Initialize camera with timeout
+  /// Initialize the camera after permissions granted
   Future<void> _initializeCamera() async {
-    setState(() => _status = '📸 Initializing camera...');
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) throw Exception('No camera found on this device.');
-
-      final frontCamera = cameras.firstWhere(
-        (cam) => cam.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
-
-      _controller = CameraController(frontCamera, ResolutionPreset.medium);
-
-      // Timeout in case initialization gets stuck
-      await _controller!.initialize().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () => throw Exception('Camera initialization timed out.'),
-      );
-
-      setState(() => _status = '📷 Taking your picture...');
-      await Future.delayed(const Duration(seconds: 1));
-
-      await _takePictureAndUpload();
-    } catch (e) {
-      print('❌ Camera initialization error: $e');
-      _showSettingsDialog('Camera failed to initialize. Please restart the app.');
-    }
-  }
-
-  // ✅ Step 4: Get user’s location safely
-  Future<Position> _getLocation() async {
-    try {
-      return await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
-    } catch (e) {
-      print('❌ Location error: $e');
-      throw Exception('Unable to get your location.');
-    }
-  }
-
-  // ✅ Step 5: Capture and upload data
-  Future<void> _takePictureAndUpload() async {
-    try {
-      if (_controller == null || !_controller!.value.isInitialized) {
-        throw Exception('Camera not ready.');
+      _cameras = await availableCameras();
+      if (_cameras == null || _cameras!.isEmpty) {
+        debugPrint('❌ No cameras found.');
+        return;
       }
 
+      final camera = _isRearCamera ? _cameras!.first : _cameras!.last;
+      _controller = CameraController(camera, ResolutionPreset.high);
+
+      await _controller!.initialize();
+
+      if (mounted) {
+        setState(() => _isCameraInitialized = true);
+      }
+      debugPrint("🎥 Camera initialized successfully");
+    } catch (e) {
+      debugPrint('❌ Camera initialization failed: $e');
+    }
+  }
+
+  /// Switch between front and rear cameras
+  Future<void> _switchCamera() async {
+    setState(() {
+      _isRearCamera = !_isRearCamera;
+      _isCameraInitialized = false;
+    });
+    await _controller?.dispose();
+    await _initializeCamera();
+  }
+
+  /// Capture photo, encode to Base64, get location & upload
+  Future<void> _captureAndUpload() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    try {
+      setState(() => _isUploading = true);
+
+      // Capture image
       final picture = await _controller!.takePicture();
       final file = File(picture.path);
+
+      // Convert image to Base64
       final bytes = await file.readAsBytes();
       final base64Image = base64Encode(bytes);
 
-      setState(() => _status = '📍 Getting location...');
-      final position = await _getLocation();
+      // Get current location
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+
+      final userId = AuthService.firebase().currentUser?.id;
+      if (userId == null) throw Exception('User not logged in');
 
       final data = {
         'ownerUserId': userId,
@@ -148,53 +174,87 @@ class _CameraUploadViewState extends State<CameraUploadView> {
       };
 
       await FirebaseFirestore.instance.collection('user_sessions').add(data);
-      print('✅ Uploaded photo & location for user: $userId');
 
-      setState(() => _status = '✅ Upload complete! Redirecting...');
-      await Future.delayed(const Duration(seconds: 2));
-      _goToNotes();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ Uploaded successfully!')),
+      );
+
+      await Future.delayed(const Duration(seconds: 1));
+
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const NotesView()),
+        );
+      }
     } catch (e) {
-      print('❌ Upload error: $e');
-      _showSettingsDialog('Failed to capture or upload your photo.');
+      debugPrint('❌ Upload error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Error: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
     }
-  }
-
-  void _goToNotes() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const NotesView()),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Taking Picture')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (_controller != null && _controller!.value.isInitialized)
-              SizedBox(
-                width: 200,
-                height: 300,
-                child: CameraPreview(_controller!),
-              )
-            else
-              const CircularProgressIndicator(),
-            const SizedBox(height: 20),
-            Text(
-              _status ?? 'Please wait...',
-              style: const TextStyle(fontSize: 16),
-              textAlign: TextAlign.center,
-            ),
-          ],
+    if (!_isCameraInitialized) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text(
+            "📸 Initializing camera...",
+            style: TextStyle(color: Colors.white, fontSize: 18),
+          ),
         ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          if (_controller != null && _controller!.value.isInitialized)
+            CameraPreview(_controller!),
+          if (_isUploading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            ),
+          Positioned(
+            bottom: 50,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.cameraswitch,
+                      color: Colors.white, size: 32),
+                  onPressed: _switchCamera,
+                ),
+                const SizedBox(width: 50),
+                GestureDetector(
+                  onTap: _isUploading ? null : _captureAndUpload,
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      color: _isUploading ? Colors.grey : Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.camera_alt,
+                        color: Colors.black, size: 35),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
